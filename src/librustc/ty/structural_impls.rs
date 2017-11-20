@@ -381,11 +381,11 @@ impl<'tcx, T: Lift<'tcx>> Lift<'tcx> for ty::error::ExpectedFound<T> {
     }
 }
 
-impl<'a, 'tcx> Lift<'tcx> for type_variable::Default<'a> {
-    type Lifted = type_variable::Default<'tcx>;
+impl<'a, 'tcx> Lift<'tcx> for type_variable::UserDefault<'a> {
+    type Lifted = type_variable::UserDefault<'tcx>;
     fn lift_to_tcx<'b, 'gcx>(&self, tcx: TyCtxt<'b, 'gcx, 'tcx>) -> Option<Self::Lifted> {
         tcx.lift(&self.ty).map(|ty| {
-            type_variable::Default {
+            type_variable::UserDefault {
                 ty,
                 origin_span: self.origin_span,
                 def_id: self.def_id
@@ -1119,9 +1119,9 @@ impl<'tcx, T: TypeFoldable<'tcx>> TypeFoldable<'tcx> for ty::error::ExpectedFoun
     }
 }
 
-impl<'tcx> TypeFoldable<'tcx> for type_variable::Default<'tcx> {
+impl<'tcx> TypeFoldable<'tcx> for type_variable::UserDefault<'tcx> {
     fn super_fold_with<'gcx: 'tcx, F: TypeFolder<'gcx, 'tcx>>(&self, folder: &mut F) -> Self {
-        type_variable::Default {
+        type_variable::UserDefault {
             ty: self.ty.fold_with(folder),
             origin_span: self.origin_span,
             def_id: self.def_id
