@@ -73,6 +73,7 @@
 #![feature(concat_idents)]
 #![feature(const_fn)]
 #![feature(custom_attribute)]
+#![feature(default_type_parameter_fallback)]
 #![feature(fundamental)]
 #![feature(i128_type)]
 #![feature(inclusive_range_syntax)]

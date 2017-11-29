@@ -10,6 +10,7 @@
 
 use cmp::Ordering;
 use ops::Try;
+use ops::Add;
 
 use super::{AlwaysOk, LoopState};
 use super::{Chain, Cycle, Cloned, Enumerate, Filter, FilterMap, FlatMap, Fuse};
@@ -1297,7 +1298,8 @@ pub trait Iterator {
     /// [`Result`]: ../../std/result/enum.Result.html
     #[inline]
     #[stable(feature = "rust1", since = "1.0.0")]
-    fn collect<B: FromIterator<Self::Item>>(self) -> B where Self: Sized {
+    fn collect<B: FromIterator<Self::Item>>(self)
+            -> B where Self: Sized {
         FromIterator::from_iter(self)
     }
 
@@ -2076,7 +2078,7 @@ pub trait Iterator {
     /// assert_eq!(sum, 6);
     /// ```
     #[stable(feature = "iter_arith", since = "1.11.0")]
-    fn sum<S>(self) -> S
+    fn sum<S=<<Self as Iterator>::Item as Add>::Output>(self) -> S
         where Self: Sized,
               S: Sum<Self::Item>,
     {
