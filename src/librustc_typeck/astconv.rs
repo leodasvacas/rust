@@ -244,12 +244,29 @@ impl<'o, 'gcx: 'tcx, 'tcx> AstConv<'gcx, 'tcx>+'o {
                 return ty;
             }
 
+            // A provided type parameter.
+            #[derive(PartialEq)]
+            enum Provided<'tcx> {
+                Some(ty::Ty<'tcx>),
+                Infer,
+                None
+            }
+
             let i = i - self_ty.is_some() as usize - decl_generics.regions.len();
-            if i < num_types_provided {
-                // A provided type parameter.
-                self.ast_ty_to_ty(&parameters.types[i])
-            } else if infer_types {
-                // No type parameters were provided, we can infer all.
+            let provided = if i < num_types_provided {
+                let provided_ty = self.ast_ty_to_ty(&parameters.types[i]);
+                match provided_ty.sty {
+                    ty::TyInfer(_) => Provided::Infer,
+                    _ => Provided::Some(provided_ty)
+                }
+            } else {
+                Provided::None
+            };
+
+            if let Provided::Some(provided) = provided {
+                provided
+            } else if provided == Provided::Infer || infer_types {
+                // Provided as `_` or no type parameters were provided, we can infer.
                 let ty_var = if !default_needs_object_self(def) {
                     self.ty_infer_for_def(def, substs, span)
                 } else {
@@ -259,6 +276,9 @@ impl<'o, 'gcx: 'tcx, 'tcx> AstConv<'gcx, 'tcx>+'o {
             } else if def.has_default {
                 // No type parameter provided, but a default exists.
 
+                // FIXME(leodasvacas): This should be feature gated
+                // under `default_type_param_fallback` for fns and impls.
+                
                 // If we are converting an object type, then the
                 // `Self` parameter is unknown. However, some of the
                 // other type parameters may reference `Self` in their

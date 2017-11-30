@@ -4881,6 +4881,8 @@ impl<'a, 'gcx, 'tcx> FnCtxt<'a, 'gcx, 'tcx> {
                 self.to_ty(ast_ty)
             } else if !infer_types && def.has_default {
                 // No type parameter provided, but a default exists.
+                // FIXME(leodasvacas): This should be feature gated
+                // under `default_type_param_fallback` for fns and impls.
                 let default = self.tcx.type_of(def.def_id);
                 self.normalize_ty(
                     span,
