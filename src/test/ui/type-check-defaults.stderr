@@ -1,0 +1,21 @@
+error[E0277]: the trait bound `i32: std::iter::FromIterator<i32>` is not satisfied
+  --> $DIR/type-check-defaults.rs:15:12
+   |
+15 | struct Bar<Z = Foo<i32, i32>>(Z);
+   |            ^ a collection of type `i32` cannot be built from an iterator over elements of type `i32`
+   |
+   = help: the trait `std::iter::FromIterator<i32>` is not implemented for `i32`
+   = note: required by `Foo`
+
+error[E0277]: the trait bound `A: std::iter::Iterator` is not satisfied
+  --> $DIR/type-check-defaults.rs:17:15
+   |
+17 | struct Qux<A, T=<A as Iterator>::Item>(A, T);
+   |               ^ `A` is not an iterator; maybe try calling `.iter()` or a similar method
+   |
+   = help: the trait `std::iter::Iterator` is not implemented for `A`
+   = help: consider adding a `where A: std::iter::Iterator` bound
+   = note: required by `std::iter::Iterator`
+
+error: aborting due to 2 previous errors
+

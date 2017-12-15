@@ -180,10 +180,7 @@ impl<'a, 'gcx> CheckTypeWellFormedVisitor<'a, 'gcx> {
                     reject_shadowing_type_parameters(fcx.tcx, item.def_id);
                     let sig = fcx.tcx.fn_sig(item.def_id);
                     let sig = fcx.normalize_associated_types_in(span, &sig);
-                    let predicates = fcx.tcx.predicates_of(item.def_id)
-                        .instantiate_identity(fcx.tcx);
-                    let predicates = fcx.normalize_associated_types_in(span, &predicates);
-                    this.check_fn_or_method(fcx, span, sig, &predicates,
+                    this.check_fn_or_method(fcx, span, sig,
                                             item.def_id, &mut implied_bounds);
                     let sig_if_method = sig_if_method.expect("bad signature for method");
                     this.check_method_receiver(fcx, sig_if_method, &item, self_ty);
@@ -267,9 +264,7 @@ impl<'a, 'gcx> CheckTypeWellFormedVisitor<'a, 'gcx> {
                 }
             }
 
-            let predicates = fcx.tcx.predicates_of(def_id).instantiate_identity(fcx.tcx);
-            let predicates = fcx.normalize_associated_types_in(item.span, &predicates);
-            this.check_where_clauses(fcx, item.span, &predicates);
+            self.check_where_clauses(fcx, item.span, def_id);
 
             vec![] // no implied bounds in a struct def'n
         });
@@ -343,10 +338,8 @@ impl<'a, 'gcx> CheckTypeWellFormedVisitor<'a, 'gcx> {
             self.check_auto_trait(trait_def_id, item.span);
         }
 
-        self.for_item(item).with_fcx(|fcx, this| {
-            let predicates = fcx.tcx.predicates_of(trait_def_id).instantiate_identity(fcx.tcx);
-            let predicates = fcx.normalize_associated_types_in(item.span, &predicates);
-            this.check_where_clauses(fcx, item.span, &predicates);
+        self.for_item(item).with_fcx(|fcx, _| {
+            self.check_where_clauses(fcx, item.span, trait_def_id);
             vec![]
         });
     }
@@ -356,12 +349,8 @@ impl<'a, 'gcx> CheckTypeWellFormedVisitor<'a, 'gcx> {
             let def_id = fcx.tcx.hir.local_def_id(item.id);
             let sig = fcx.tcx.fn_sig(def_id);
             let sig = fcx.normalize_associated_types_in(item.span, &sig);
-
-            let predicates = fcx.tcx.predicates_of(def_id).instantiate_identity(fcx.tcx);
-            let predicates = fcx.normalize_associated_types_in(item.span, &predicates);
-
             let mut implied_bounds = vec![];
-            this.check_fn_or_method(fcx, item.span, sig, &predicates,
+            this.check_fn_or_method(fcx, item.span, sig,
                                     def_id, &mut implied_bounds);
             implied_bounds
         })
@@ -415,9 +404,7 @@ impl<'a, 'gcx> CheckTypeWellFormedVisitor<'a, 'gcx> {
                 }
             }
 
-            let predicates = fcx.tcx.predicates_of(item_def_id).instantiate_identity(fcx.tcx);
-            let predicates = fcx.normalize_associated_types_in(item.span, &predicates);
-            this.check_where_clauses(fcx, item.span, &predicates);
+            this.check_where_clauses(fcx, item.span, item_def_id);
 
             fcx.impl_implied_bounds(item_def_id, item.span)
         });
@@ -426,8 +413,25 @@ impl<'a, 'gcx> CheckTypeWellFormedVisitor<'a, 'gcx> {
     fn check_where_clauses<'fcx, 'tcx>(&mut self,
                                        fcx: &FnCtxt<'fcx, 'gcx, 'tcx>,
                                        span: Span,
-                                       predicates: &ty::InstantiatedPredicates<'tcx>)
+                                       def_id: DefId)
     {
+        let defaults = fcx.tcx.generics_of(def_id)
+                                  .types
+                                  .iter()
+                                  .filter_map(|p| match p.has_default {
+                                                    true => Some(p.def_id),
+                                                    false => None,
+                                    });
+
+        for def_id in defaults {
+            fcx.register_wf_obligation(fcx.tcx.type_of(def_id),
+                                        fcx.tcx.def_span(def_id),
+                                        self.code.clone());
+        }
+
+        let predicates = fcx.tcx.predicates_of(def_id).instantiate_identity(fcx.tcx);
+        let predicates = fcx.normalize_associated_types_in(span, &predicates);
+
         let obligations =
             predicates.predicates
                       .iter()
@@ -446,7 +450,6 @@ impl<'a, 'gcx> CheckTypeWellFormedVisitor<'a, 'gcx> {
                                       fcx: &FnCtxt<'fcx, 'gcx, 'tcx>,
                                       span: Span,
                                       sig: ty::PolyFnSig<'tcx>,
-                                      predicates: &ty::InstantiatedPredicates<'tcx>,
                                       def_id: DefId,
                                       implied_bounds: &mut Vec<Ty<'tcx>>)
     {
@@ -463,7 +466,7 @@ impl<'a, 'gcx> CheckTypeWellFormedVisitor<'a, 'gcx> {
         // FIXME(#25759) return types should not be implied bounds
         implied_bounds.push(sig.output());
 
-        self.check_where_clauses(fcx, span, predicates);
+        self.check_where_clauses(fcx, span, def_id);
     }
 
     fn check_method_receiver<'fcx, 'tcx>(&mut self,
