@@ -17,17 +17,15 @@ struct Foo<T, U: FromIterator<T>>(T, U);
 struct WellFormed<Z = Foo<i32, i32>>(Z);
 struct WellFormedNoBounds<Z:?Sized = Foo<i32, i32>>(Z);
 
+trait WellFormedTrait<Z = Foo<i32, i32>> {}
+
 struct WellFormedProjection<A, T=<A as Iterator>::Item>(A, T);
 
 struct Bounds<T:Copy=String>(T);
 
 struct WhereClause<T=String>(T) where T: Copy;
 
-trait TraitBound<T:Copy=String> {}
-
-trait SelfBound<T:Copy=Self> {}
-
-trait FooTrait<T:Iterator = IntoIter<i32>> where T::Item : Add<u8> {}
+struct Projection<T:Iterator = IntoIter<i32>>(T) where T::Item : Add<u8>;
 
 trait Trait {}
 struct TwoParams<T, U>(T, U);
