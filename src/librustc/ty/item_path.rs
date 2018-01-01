@@ -9,12 +9,14 @@
 // except according to those terms.
 
 use hir::map::DefPathData;
+use hir::def::Export;
 use hir::def_id::{CrateNum, DefId, CRATE_DEF_INDEX, LOCAL_CRATE};
 use ty::{self, Ty, TyCtxt};
 use syntax::ast;
 use syntax::symbol::Symbol;
 use syntax::symbol::InternedString;
 
+use std::borrow::Cow;
 use std::cell::Cell;
 
 thread_local! {
@@ -62,7 +64,7 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
                 RootMode::Local
             }
         });
-        let mut buffer = LocalPathBuffer::new(mode);
+        let mut buffer = LocalPathBuffer::new(mode, def_id);
         self.push_item_path(&mut buffer, def_id);
         buffer.into_string()
     }
@@ -75,7 +77,7 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
     /// Returns a string identifying this def-id. This string is
     /// suitable for user output. It always begins with a crate identifier.
     pub fn absolute_item_path_str(self, def_id: DefId) -> String {
-        let mut buffer = LocalPathBuffer::new(RootMode::Absolute);
+        let mut buffer = LocalPathBuffer::new(RootMode::Absolute, def_id);
         self.push_item_path(&mut buffer, def_id);
         buffer.into_string()
     }
@@ -86,7 +88,7 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
     pub fn push_krate_path<T>(self, buffer: &mut T, cnum: CrateNum)
         where T: ItemPathBuffer
     {
-        match *buffer.root_mode() {
+        match buffer.root_mode() {
             RootMode::Local => {
                 // In local mode, when we encounter a crate other than
                 // LOCAL_CRATE, execution proceeds in one of two ways:
@@ -178,10 +180,9 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
     pub fn push_item_path<T>(self, buffer: &mut T, def_id: DefId)
         where T: ItemPathBuffer
     {
-        match *buffer.root_mode() {
-            RootMode::Local if !def_id.is_local() =>
-                if self.try_push_visible_item_path(buffer, def_id) { return },
-            _ => {}
+        if buffer.root_mode() == RootMode::Local && !def_id.is_local()
+            && self.try_push_visible_item_path(buffer, def_id) {
+                return
         }
 
         let key = self.def_key(def_id);
@@ -214,7 +215,24 @@ impl<'a, 'gcx, 'tcx> TyCtxt<'a, 'gcx, 'tcx> {
             data @ DefPathData::GlobalMetaData(..) => {
                 let parent_def_id = self.parent_def_id(def_id).unwrap();
                 self.push_item_path(buffer, parent_def_id);
-                buffer.push(&data.as_interned_str());
+                // Detect a rename in an export (e.g. `use foo as bar`)
+                for export in self.module_exports(parent_def_id).unwrap_or_default().iter() {
+                    buffer.check_for_target_alias(export);
+                }
+                let segment = data.as_interned_str();
+                match buffer.target_alias() {
+                    None => buffer.push(&segment),
+                    Some(alias) => {
+                        if buffer.is_target(def_id) {
+                            let mut aliased_segment = Cow::from(&alias as &str);
+                            if let Some(tail) = segment.splitn(1, '<').skip(1).next() {
+                                aliased_segment.to_mut().push('<');
+                                aliased_segment.to_mut().push_str(tail);
+                            }
+                            buffer.push(&Symbol::intern(&aliased_segment).as_str());
+                        }
+                    }
+                }
             }
             DefPathData::StructCtor => { // present `X` instead of `X::{{constructor}}`
                 let parent_def_id = self.parent_def_id(def_id).unwrap();
@@ -384,11 +402,14 @@ pub fn characteristic_def_id_of_type(ty: Ty) -> Option<DefId> {
 /// construct. The basic interface is that components get pushed: the
 /// instance can also customize how we handle the root of a crate.
 pub trait ItemPathBuffer {
-    fn root_mode(&self) -> &RootMode;
+    fn root_mode(&self) -> RootMode;
     fn push(&mut self, text: &str);
+    fn is_target(&self, _: DefId) -> bool { false }
+    fn target_alias(&self) -> Option<InternedString> { None }
+    fn check_for_target_alias(&mut self, _: &Export) { }
 }
 
-#[derive(Debug)]
+#[derive(Copy, Clone, PartialEq, Eq, Debug)]
 pub enum RootMode {
     /// Try to make a path relative to the local crate.  In
     /// particular, local paths have no prefix, and if the path comes
@@ -405,13 +426,17 @@ pub enum RootMode {
 struct LocalPathBuffer {
     root_mode: RootMode,
     str: String,
+    target: DefId,
+    alias: Option<InternedString>,
 }
 
 impl LocalPathBuffer {
-    fn new(root_mode: RootMode) -> LocalPathBuffer {
+    fn new(root_mode: RootMode, target: DefId) -> LocalPathBuffer {
         LocalPathBuffer {
             root_mode,
             str: String::new(),
+            target,
+            alias: None,
         }
     }
 
@@ -421,8 +446,8 @@ impl LocalPathBuffer {
 }
 
 impl ItemPathBuffer for LocalPathBuffer {
-    fn root_mode(&self) -> &RootMode {
-        &self.root_mode
+    fn root_mode(&self) -> RootMode {
+        self.root_mode
     }
 
     fn push(&mut self, text: &str) {
@@ -430,5 +455,20 @@ impl ItemPathBuffer for LocalPathBuffer {
             self.str.push_str("::");
         }
         self.str.push_str(text);
+    }
+
+    fn is_target(&self, did: DefId) -> bool {
+        did == self.target
+    }
+
+    fn target_alias(&self) -> Option<InternedString> {
+        self.alias
+    }
+
+    fn check_for_target_alias(&mut self, export: &Export) {
+        if self.root_mode() == RootMode::Local &&
+            export.def.def_id() == self.target && export.vis == ty::Visibility::Public {
+            self.alias.get_or_insert(export.ident.name.as_str());
+        }
     }
 }

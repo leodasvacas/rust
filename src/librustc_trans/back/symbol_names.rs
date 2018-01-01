@@ -385,9 +385,8 @@ impl SymbolPathBuffer {
 }
 
 impl ItemPathBuffer for SymbolPathBuffer {
-    fn root_mode(&self) -> &RootMode {
-        const ABSOLUTE: &'static RootMode = &RootMode::Absolute;
-        ABSOLUTE
+    fn root_mode(&self) -> RootMode {
+        RootMode::Absolute
     }
 
     fn push(&mut self, text: &str) {
