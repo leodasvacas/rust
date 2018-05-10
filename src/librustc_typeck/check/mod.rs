@@ -1132,9 +1132,17 @@ fn check_fn<'a, 'gcx, 'tcx>(inherited: &'a Inherited<'a, 'gcx, 'tcx>,
             if id == fn_id {
                 match entry_type {
                     config::EntryMain => {
+                        let return_ty_span = decl.output.span();
+                        if ret_ty.is_ty_anon() {
+                            struct_span_err!(fcx.sess(),
+                                        return_ty_span,
+                                        E0912,
+                                        "impl Trait is not allowed in the return type of `main`")
+                                        .help("consider using `()`, or a `Result`")
+                                        .emit();
+                        }
                         let substs = fcx.tcx.mk_substs(iter::once(Kind::from(ret_ty)));
                         let trait_ref = ty::TraitRef::new(term_id, substs);
-                        let return_ty_span = decl.output.span();
                         let cause = traits::ObligationCause::new(
                             return_ty_span, fn_id, ObligationCauseCode::MainFunctionType);
 

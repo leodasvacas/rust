@@ -1299,6 +1299,13 @@ impl<'a, 'gcx, 'tcx> TyS<'tcx> {
         }
     }
 
+    pub fn is_ty_anon(&self) -> bool {
+        match self.sty {
+            TyAnon(..) => true,
+            _ => false,
+        }
+    }
+
     pub fn is_ty_infer(&self) -> bool {
         match self.sty {
             TyInfer(_) => true,
